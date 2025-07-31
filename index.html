@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>DMX Patch Plan</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+    th, td { border: 1px solid #ccc; padding: 5px; text-align: center; }
+    th { background-color: #f2f2f2; }
+    td input { width: 100%; box-sizing: border-box; border: none; text-align: center; background-color: white; }
+    .start-channel { background-color: #a0d6a0 !important; }
+    .highlighted { background-color: #d0f0c0 !important; }
+    .overlap { background-color: #ff3000 !important; }
+    .row-even { background-color: #fafafa; }
+    .row-odd { background-color: #ffffff; }
+    button { padding: 6px 12px; margin: 10px 5px; }
+    .lang-toggle { float: right; margin-top: -20px; }
+    .lang-toggle img { height: 24px; cursor: pointer; margin-left: 10px; }
+    #description { margin-top: 40px; padding: 10px; border: 1px solid #ddd; background: #f9f9f9; }
+  </style>
+</head>
+<body>
+
+<div class="lang-toggle">
+  <img src="https://flagcdn.com/gb.svg" onclick="switchLanguage('en')" title="English">
+  <img src="https://flagcdn.com/de.svg" onclick="switchLanguage('de')" title="Deutsch">
+</div>
+
+<h1>Interactive DMX Patch Plan</h1>
+
+<div id="description">
+  <!-- Language content will be inserted here -->
+</div>
+
+<div>
+  <label for="universeSelector">Select DMX Universe:</label>
+  <select id="universeSelector" onchange="switchUniverse()"></select>
+  <button onclick="addUniverse()">Add Universe</button>
+  <button onclick="resetUniverse()">Reset Universe</button>
+  <button onclick="window.print()">Print Complete Plan</button>
+  <button onclick="printPatchList()">Print Patch List Only</button>
+</div>
+
+<div id="tablesContainer"></div>
+
+<h3>Total Power Draw: <span id="totalPower">0</span> W</h3>
+
+<script>
+let universeCount = 0;
+let descriptions = {
+  en: `<h3>Instructions (English)</h3>
+    <p>Use this tool to patch your DMX devices across multiple universes.</p>
+    <ul>
+      <li>Enter the <strong>Device Name</strong>, <strong>Channel Mode</strong>, and <strong>Wattage</strong>.</li>
+      <li>The channels used will be highlighted in green. Start channels are darker green.</li>
+      <li>Conflicts are marked in <strong style="color: #ff3000;">red</strong>.</li>
+      <li>Use the <strong>"Print Patch List Only"</strong> button to export a compact list with start addresses and modes for setting up devices.</li>
+    </ul>`,
+  de: `<h3>Anleitung (Deutsch)</h3>
+    <p>Mit diesem Tool kannst du deine DMX-Geräte in mehreren Universen patchen.</p>
+    <ul>
+      <li>Trage den <strong>Gerätenamen</strong>, den <strong>Channel Mode</strong> und die <strong>Leistungsaufnahme (W)</strong> ein.</li>
+      <li>Die belegten Kanäle werden grün markiert, Startkanäle in dunklerem Grün.</li>
+      <li>Überschneidungen werden in <strong style="color: #ff3000;">rot</strong> angezeigt.</li>
+      <li>Klicke auf <strong>"Print Patch List Only"</strong>, um eine kompakte Liste für den Aufbau zu drucken.</li>
+    </ul>`
+};
+
+function switchLanguage(lang) {
+  document.getElementById("description").innerHTML = descriptions[lang];
+}
+
+function createTable(universe) {
+  universeCount++;
+  const table = document.createElement('table');
+  table.id = 'dmxTable-' + universe;
+  table.className = 'dmxTable';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Channel</th>
+        <th>Device Name</th>
+        <th>Channel Mode</th>
+        <th>Wattage</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${Array.from({length: 512}, (_, i) => `
+        <tr id="row-${universe}-${i+1}" class="${(i+1) % 2 === 0 ? 'row-even' : 'row-odd'}">
+          <td>${i+1}</td>
+          <td><input type="text" id="device-${universe}-${i+1}" oninput="updateHighlight(${universe}, ${i+1})"></td>
+          <td><input type="number" min="1" max="512" id="mode-${universe}-${i+1}" oninput="updateHighlight(${universe}, ${i+1})"></td>
+          <td><input type="number" min="0" id="watt-${universe}-${i+1}" oninput="updatePowerDraw()"></td>
+        </tr>
+      `).join('')}
+    </tbody>
+  `;
+  document.getElementById('tablesContainer').appendChild(table);
+
+  const selector = document.getElementById('universeSelector');
+  const option = document.createElement('option');
+  option.value = universe;
+  option.textContent = 'Universe ' + universe;
+  selector.appendChild(option);
+
+  if (universeCount === 1) selector.value = universe;
+  switchUniverse();
+}
+
+function updateHighlight(universe, start) {
+  clearHighlights(universe);
+  for (let i = 1; i <= 512; i++) {
+    let name = document.getElementById(`device-${universe}-${i}`).value;
+    let mode = parseInt(document.getElementById(`mode-${universe}-${i}`).value);
+    if (name && mode && mode > 0) {
+      for (let j = 0; j < mode; j++) {
+        let ch = i + j;
+        if (ch > 512) break;
+        let row = document.getElementById(`row-${universe}-${ch}`);
+        if (row.classList.contains('highlighted') || row.classList.contains('start-channel')) {
+          row.classList.add('overlap');
+        } else {
+          row.classList.add(j === 0 ? 'start-channel' : 'highlighted');
+        }
+      }
+    }
+  }
+}
+
+function clearHighlights(universe) {
+  for (let i = 1; i <= 512; i++) {
+    let row = document.getElementById(`row-${universe}-${i}`);
+    row.classList.remove('highlighted', 'overlap', 'start-channel');
+  }
+}
+
+function resetUniverse() {
+  let universe = document.getElementById("universeSelector").value;
+  for (let i = 1; i <= 512; i++) {
+    document.getElementById(`device-${universe}-${i}`).value = '';
+    document.getElementById(`mode-${universe}-${i}`).value = '';
+    document.getElementById(`watt-${universe}-${i}`).value = '';
+  }
+  clearHighlights(universe);
+  updatePowerDraw();
+}
+
+function updatePowerDraw() {
+  let total = 0;
+  for (let u = 1; u <= universeCount; u++) {
+    for (let i = 1; i <= 512; i++) {
+      let input = document.getElementById(`watt-${u}-${i}`);
+      if (input) {
+        let w = parseFloat(input.value || 0);
+        total += w;
+      }
+    }
+  }
+  document.getElementById("totalPower").textContent = total.toFixed(1);
+}
+
+function switchUniverse() {
+  const selected = document.getElementById("universeSelector").value;
+  for (let u = 1; u <= universeCount; u++) {
+    const tbl = document.getElementById(`dmxTable-${u}`);
+    if (tbl) tbl.style.display = (u == selected ? "table" : "none");
+  }
+}
+
+function addUniverse() {
+  createTable(universeCount + 1);
+}
+
+function printPatchList() {
+  let html = `<html><head><title>Patch List</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 5px; text-align: center; }
+    th { background-color: #f2f2f2; }
+  </style>
+  </head><body>`;
+  html += `<h2>DMX Patch List</h2><table><tr><th>Universe</th><th>Start Address</th><th>Device Name</th><th>Channel Mode</th></tr>`;
+
+  for (let u = 1; u <= universeCount; u++) {
+    for (let i = 1; i <= 512; i++) {
+      let name = document.getElementById(`device-${u}-${i}`)?.value;
+      let mode = document.getElementById(`mode-${u}-${i}`)?.value;
+      if (name && name.trim() !== "" && mode && mode.trim() !== "") {
+        html += `<tr><td>${u}</td><td>${i}</td><td>${name}</td><td>${mode}</td></tr>`;
+      }
+    }
+  }
+
+  html += `</table></body></html>`;
+  let newWin = window.open('', '_blank');
+  newWin.document.write(html);
+  newWin.document.close();
+  newWin.print();
+}
+
+window.onload = function() {
+  switchLanguage('de');
+  for (let u = 1; u <= 16; u++) createTable(u);
+}
+</script>
+
+</body>
+</html>
